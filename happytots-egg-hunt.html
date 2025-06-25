@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Happytots Egg Hunt</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #FFFBEB; color: #4B5563; }
+        .font-fredoka { font-family: 'Fredoka One', cursive; }
+        .egg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; width: 100%; max-width: 400px; }
+        .egg { aspect-ratio: 1 / 1; background-color: #FB923C; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: white; cursor: pointer; transition: transform 0.3s, background-color 0.3s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transform-style: preserve-3d; }
+        .egg:hover { transform: scale(1.05); box-shadow: 0 8px 12px rgba(0,0,0,0.15); }
+        .egg.flipped { transform: rotateY(180deg); cursor: default; background-color: #A3E635; }
+        .egg .egg-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; }
+        .egg .egg-front { /* The orange egg part */ }
+        .egg .egg-back { transform: rotateY(180deg); font-size: 0.8rem; padding: 5px; text-align: center; font-weight: bold; }
+        .btn-primary { background-color: #F97316; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: bold; transition: background-color 0.2s; }
+        .btn-primary:hover { background-color: #EA580C; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div id="app-container" class="w-full max-w-2xl mx-auto text-center">
+        <div id="start-screen">
+            <h1 class="text-5xl md:text-6xl font-fredoka text-orange-600 mb-4">Happytots Egg Hunt</h1>
+            <p class="text-lg text-gray-600 mb-8">Ready to find a prize? Click the button below to start!</p>
+            <button id="start-now-btn" class="btn-primary text-2xl px-12 py-4">Start Now!</button>
+        </div>
+        <div id="game-area" class="hidden">
+             <h1 class="text-5xl md:text-6xl font-fredoka text-orange-600 mb-4">Happytots Egg Hunt</h1>
+             <p class="text-lg mb-6 text-gray-600">Click on an egg to find your prize!</p>
+             <div class="flex justify-center mb-6"><div id="egg-grid-container" class="egg-grid"></div></div>
+             <div id="message-area" class="h-16 text-2xl font-bold"></div>
+        </div>
+        <div id="cooldown-area" class="hidden text-center p-8 bg-white rounded-lg shadow-lg">
+             <h2 class="text-2xl font-bold text-gray-800 mb-2">Please wait...</h2>
+             <p class="text-gray-600 mb-4">You can play again in:</p>
+             <div id="countdown-timer" class="text-5xl font-fredoka text-orange-500"></div>
+        </div>
+        <div id="history-area" class="mt-12 w-full max-w-md mx-auto hidden">
+            <h3 class="text-xl font-bold mb-4">Your Won Vouchers</h3>
+            <div class="bg-white p-4 rounded-lg shadow-inner max-h-48 overflow-y-auto">
+                <ul id="history-list" class="space-y-2 text-left"></ul>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const GAME_CONFIG = {
+                obfuscatedCodes: ["MQ==","Mg=="],
+                winningRate: 100,
+                delayMinutes: 5
+            };
+            const startScreen = document.getElementById('start-screen');
+            const startNowBtn = document.getElementById('start-now-btn');
+            const gameArea = document.getElementById('game-area');
+            const cooldownArea = document.getElementById('cooldown-area');
+            const historyArea = document.getElementById('history-area');
+            const eggGridContainer = document.getElementById('egg-grid-container');
+            const messageArea = document.getElementById('message-area');
+            const countdownTimer = document.getElementById('countdown-timer');
+            const historyList = document.getElementById('history-list');
+            let gameActive = false;
+            let countdownInterval;
+
+            const getFromLocalStorage = (key, d) => JSON.parse(localStorage.getItem(key)) || d;
+            const saveToLocalStorage = (key, v) => localStorage.setItem(key, JSON.stringify(v));
+
+            startNowBtn.addEventListener('click', () => {
+                startScreen.classList.add('hidden');
+                checkCooldownAndInitialize();
+            });
+
+            function initializeGame() {
+                gameArea.classList.remove('hidden');
+                gameArea.classList.add('fade-in');
+                historyArea.classList.remove('hidden');
+                updateHistoryDisplay();
+                gameActive = true;
+                messageArea.textContent = '';
+                messageArea.className = 'h-16 text-2xl font-bold';
+                eggGridContainer.innerHTML = '';
+                const isWin = Math.random() * 100 < GAME_CONFIG.winningRate;
+                let winningCode = null;
+                if (isWin && GAME_CONFIG.obfuscatedCodes.length > 0) {
+                    const idx = Math.floor(Math.random() * GAME_CONFIG.obfuscatedCodes.length);
+                    winningCode = GAME_CONFIG.obfuscatedCodes[idx];
+                }
+                const winningEggIndex = Math.floor(Math.random() * 9);
+                const decoyValue = btoa("Try Again!");
+                for (let i = 0; i < 9; i++) {
+                    const egg = document.createElement('div');
+                    egg.className = 'egg';
+                    const codeToAssign = (i === winningEggIndex) ? (winningCode || decoyValue) : decoyValue;
+                    egg.innerHTML = `
+                        <div class="egg-face egg-front"></div>
+                        <div class="egg-face egg-back">${atob(codeToAssign)}</div>
+                    `;
+                    egg.dataset.code = codeToAssign;
+                    egg.addEventListener('click', handleEggClick);
+                    eggGridContainer.appendChild(egg);
+                }
+            }
+
+            function handleEggClick(event) {
+                if (!gameActive) return;
+                const clickedEgg = event.currentTarget;
+                const revealedCode = atob(clickedEgg.dataset.code);
+                gameActive = false;
+                clickedEgg.classList.add('flipped');
+                if (revealedCode !== "Try Again!") {
+                    messageArea.textContent = 'You won: ' + revealedCode;
+                    messageArea.classList.add('text-green-500');
+                    saveWonVoucher(revealedCode);
+                    updateHistoryDisplay();
+                } else {
+                    messageArea.textContent = 'Better luck next time!';
+                    messageArea.classList.add('text-red-500');
+                }
+                setTimeout(() => {
+                    document.querySelectorAll('.egg:not(.flipped)').forEach(egg => egg.classList.add('flipped'));
+                }, 1000);
+                startCooldown();
+            }
+
+            function startCooldown() {
+                const cooldownEndTime = Date.now() + GAME_CONFIG.delayMinutes * 60 * 1000;
+                saveToLocalStorage('cooldownEndTime', cooldownEndTime);
+                setTimeout(checkCooldownAndInitialize, 2000);
+            }
+
+            function checkCooldownAndInitialize() {
+                const cooldownEndTime = getFromLocalStorage('cooldownEndTime', 0);
+                gameArea.classList.add('hidden');
+                startScreen.classList.add('hidden');
+                if (Date.now() < cooldownEndTime) {
+                    cooldownArea.classList.remove('hidden');
+                    if (countdownInterval) clearInterval(countdownInterval);
+                    countdownInterval = setInterval(() => updateCountdown(cooldownEndTime), 1000);
+                    updateCountdown(cooldownEndTime);
+                } else {
+                    cooldownArea.classList.add('hidden');
+                    if (countdownInterval) clearInterval(countdownInterval);
+                    initializeGame();
+                }
+            }
+
+            function updateCountdown(endTime) {
+                const timeLeft = endTime - Date.now();
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    checkCooldownAndInitialize();
+                    return;
+                }
+                const minutes = Math.floor((timeLeft / 1000) / 60);
+                const seconds = Math.floor((timeLeft / 1000) % 60);
+                countdownTimer.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+
+            function saveWonVoucher(code) {
+                const history = getFromLocalStorage('wonVouchers', []);
+                if (!history.includes(code)) {
+                    history.push(code);
+                    saveToLocalStorage('wonVouchers', history);
+                }
+            }
+
+            function updateHistoryDisplay() {
+                const history = getFromLocalStorage('wonVouchers', []);
+                historyList.innerHTML = history.length === 0 ? '<li class="text-gray-500 italic">No vouchers won yet.</li>' : history.map(c => `<li class="bg-orange-100 p-2 rounded-md font-mono text-gray-800">${c}</li>`).join('');
+                if (history.length > 0) historyArea.classList.remove('hidden');
+            }
+
+            // Initial Check
+            const cooldownEndTime = getFromLocalStorage('cooldownEndTime', 0);
+            if(Date.now() < cooldownEndTime) {
+                 startScreen.classList.add('hidden');
+                 checkCooldownAndInitialize();
+            }
+            updateHistoryDisplay();
+        });
+    </script>
+</body>
+</html>
